@@ -4,6 +4,8 @@
 // @version      1.8.2
 // @description  Detecta mudanças, varre novas caixas, botão arrastável e alerta de tempo inativo
 // @match        https://wms.adminml.com/reports/units/totes*
+// @updateURL    https://github.com/dinizalessandro537-hub/monitor-packing-meli/raw/refs/heads/main/monitor.user.js
+// @downloadURL  https://github.com/dinizalessandro537-hub/monitor-packing-meli/raw/refs/heads/main/monitor.user.js
 // @run-at       document-end
 // @grant        none
 // ==/UserScript==
