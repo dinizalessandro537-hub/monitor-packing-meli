@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Monitor de Packing Meli - V1.8.3 (Botão Móvel + Alerta de Tempo)
 // @namespace    http://tampermonkey.net/
-// @version      1.8.3
+// @version      1.8.4
 // @description  Detecta mudanças, varre novas caixas, botão arrastável e alerta de tempo inativo
 // @match        https://wms.adminml.com/reports/units/totes*
 // @updateURL    https://github.com/dinizalessandro537-hub/monitor-packing-meli/raw/refs/heads/main/monitor.user.js
