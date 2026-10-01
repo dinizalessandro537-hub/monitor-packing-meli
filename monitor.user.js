@@ -1,8 +1,8 @@
 // ==UserScript==
-// @name         Monitor de Packing Meli - V1.8.2 (Botão Móvel + Alerta de Tempo)
+// @name         Monitor de Packing Meli - V1.9.0
 // @namespace    http://tampermonkey.net/
-// @version      1.8.2
-// @description  Detecta mudanças, varre novas caixas, botão arrastável e alerta de tempo inativo
+// @version      1.9.0
+// @description  Mostra produtos faltantes, alerta de tempo, botão arrastável e update pelo GitHub
 // @match        https://wms.adminml.com/reports/units/totes*
 // @updateURL    https://github.com/dinizalessandro537-hub/monitor-packing-meli/raw/refs/heads/main/monitor.user.js
 // @downloadURL  https://github.com/dinizalessandro537-hub/monitor-packing-meli/raw/refs/heads/main/monitor.user.js
@@ -150,8 +150,10 @@
     }
 
     async function verificarStatusTote(toteId, elementoVisual, ontem, hoje) {
-        // PASSO 1: Verifica se a caixa já terminou (Link de Endereço)
+        // PASSO 1: Verifica Endereço (Terminado ou Conta Quantidades)
         const urlEndereco = `https://wms.adminml.com/reports/address?address_from=${toteId}`;
+        let qtdFaltante = 0;
+        let achouQuantidade = false;
 
         try {
             const respostaEndereco = await fetch(urlEndereco);
@@ -168,7 +170,6 @@
                 elementoVisual.style.backgroundColor = "#e3f2fd";
                 elementoVisual.style.border = "3px solid #1e88e5";
 
-                // --- FONTES AUMENTADAS PARA TOTE TERMINADO ---
                 if (!elementoVisual.innerHTML.includes('TOTE TERMINADO')) {
                     elementoVisual.innerHTML = `
                         <strong style="font-size: 14px;">${toteId}</strong><br>
@@ -176,9 +177,33 @@
                     `;
                 }
                 return;
+            } else {
+                // Se não está vazia, vamos somar as quantidades que ainda estão na caixa
+                const tabelas = docEndereco.querySelectorAll('table');
+                if (tabelas.length > 0) {
+                    const tabela = tabelas[0];
+                    const headers = Array.from(tabela.querySelectorAll('th')).map(th => th.innerText.trim().toLowerCase());
+                    
+                    // Procura qual coluna é a de quantidade
+                    let idxQtd = headers.findIndex(h => h.includes('quantidade') || h.includes('unidade') || h.includes('qty'));
+                    
+                    if (idxQtd !== -1) {
+                        const linhas = tabela.querySelectorAll('tbody tr');
+                        linhas.forEach(linha => {
+                            const celulas = linha.querySelectorAll('td');
+                            if (celulas.length > idxQtd) {
+                                const val = parseInt(celulas[idxQtd].innerText.trim(), 10);
+                                if (!isNaN(val)) {
+                                    qtdFaltante += val;
+                                    achouQuantidade = true;
+                                }
+                            }
+                        });
+                    }
+                }
             }
 
-            // PASSO 2: Se não está vazia, verifica se está em Packing (Link de Movimentos)
+            // PASSO 2: Verifica Movimentos (Packing, Nome e Hora)
             const urlMovimentos = `https://wms.adminml.com/reports/movements?limit=50&offset=0&sort=date_desc&date_from=${ontem}&date_to=${hoje}&storage_id=${toteId}`;
 
             const respostaMov = await fetch(urlMovimentos);
@@ -195,26 +220,20 @@
                     let responsavel = "Desconhecido";
                     let horario = "Sem hora";
                     
-                    // --- NOVA LÓGICA DE COR DO HORÁRIO ---
                     let corHorario = "#8e44ad"; // Roxo padrão
 
                     if (colunas.length >= 2) {
                         responsavel = colunas[colunas.length - 1].innerText.trim().split('\n')[0];
                         horario = colunas[colunas.length - 2].innerText.trim().split('\n')[0];
                         
-                        // Tenta extrair e calcular o tempo
-                        // Formato esperado: DD/MM/YYYY HH:MM:SS
                         let partesHorario = horario.split(' ');
                         if (partesHorario.length === 2) {
                             let partesData = partesHorario[0].split('/');
                             let partesTempo = partesHorario[1].split(':');
                             
                             if (partesData.length === 3 && partesTempo.length >= 2) {
-                                // Cria um objeto de Data (Ano, Mês [0-11], Dia, Hora, Minuto, Segundo)
                                 let dataBip = new Date(partesData[2], partesData[1] - 1, partesData[0], partesTempo[0], partesTempo[1], partesTempo[2] || 0);
                                 let tempoAtual = new Date();
-                                
-                                // Diferença em minutos
                                 let diferencaMinutos = (tempoAtual - dataBip) / 1000 / 60;
                                 
                                 if (diferencaMinutos > 30) {
@@ -229,11 +248,17 @@
                     elementoVisual.style.backgroundColor = "#c8e6c9";
                     elementoVisual.style.border = "3px solid #2ecc71";
 
-                    // --- FONTES AUMENTADAS PARA PACKING COM COR DINÂMICA ---
-                    if (!elementoVisual.innerHTML.includes('EM PACKING')) {
+                    // Prepara o texto do status incluindo a quantidade se foi encontrada
+                    let textoStatusPacking = `☑ EM PACKING`;
+                    if (achouQuantidade && qtdFaltante > 0) {
+                        let palavra = qtdFaltante === 1 ? 'produto' : 'produtos';
+                        textoStatusPacking = `☑ EM PACKING <span style="color: #555; font-size: 11px;">(faltam ${qtdFaltante} ${palavra})</span>`;
+                    }
+
+                    if (!elementoVisual.innerHTML.includes(textoStatusPacking)) {
                         elementoVisual.innerHTML = `
                             <strong style="font-size: 14px;">${toteId}</strong><br>
-                            <span style="color: green; font-size: 13px; font-weight: bold;">☑ EM PACKING</span><br>
+                            <span style="color: green; font-size: 13px; font-weight: bold;">${textoStatusPacking}</span><br>
                             <span style="color: #2980b9; font-size: 15px; font-weight: bold;">👤 ${responsavel}</span><br>
                             <span style="color: ${corHorario}; font-size: 14px; font-weight: bold;">🕒 ${horario}</span>
                         `;
