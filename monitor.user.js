@@ -1,8 +1,8 @@
 // ==UserScript==
-// @name         Monitor de Packing Meli - V1.9.0
+// @name         Monitor de Packing Meli - V1.9.2
 // @namespace    http://tampermonkey.net/
-// @version      1.9.0
-// @description  Mostra produtos faltantes, alerta de tempo, botão arrastável e update pelo GitHub
+// @version      1.9.2
+// @description  Mostra produtos faltantes, alerta de tempo, arrastável, GitHub update e Unfit Pre Packing
 // @match        https://wms.adminml.com/reports/units/totes*
 // @updateURL    https://github.com/dinizalessandro537-hub/monitor-packing-meli/raw/refs/heads/main/monitor.user.js
 // @downloadURL  https://github.com/dinizalessandro537-hub/monitor-packing-meli/raw/refs/heads/main/monitor.user.js
@@ -28,10 +28,9 @@
         btn.style.fontWeight = 'bold';
         btn.style.border = 'none';
         btn.style.borderRadius = '5px';
-        btn.style.cursor = 'move'; // Muda o mouse para indicar que é arrastável
+        btn.style.cursor = 'move'; 
         document.body.appendChild(btn);
 
-        // --- INÍCIO DA LÓGICA DO BOTÃO MÓVEL ---
         let isDragging = false;
         let startPosX = 0, startPosY = 0;
 
@@ -42,7 +41,7 @@
             
             function onMouseMove(eMove) {
                 isDragging = true;
-                btn.style.bottom = 'auto'; // Remove o travamento no fundo
+                btn.style.bottom = 'auto'; 
                 btn.style.right = 'auto';
                 btn.style.left = (eMove.clientX - startPosX) + 'px';
                 btn.style.top = (eMove.clientY - startPosY) + 'px';
@@ -56,9 +55,7 @@
             document.addEventListener('mousemove', onMouseMove);
             document.addEventListener('mouseup', onMouseUp);
         });
-        // --- FIM DA LÓGICA DO BOTÃO MÓVEL ---
 
-        // Modificamos o onclick para não pesquisar se o usuário estiver apenas arrastando
         btn.onclick = async function(e) {
             if (isDragging) {
                 e.preventDefault();
@@ -69,26 +66,22 @@
             }
         };
 
-        // RADAR RÁPIDO: A cada 2 segundos, olha se apareceram caixas NOVAS na tela (mudança de página)
         setInterval(() => {
             buscarCaixasNovasNaTela();
         }, 2000);
 
-        // RADAR COMPLETO: A cada 40 segundos, re-verifica tudo para atualizar os tempos
         setInterval(async () => {
             if (!buscando) {
                 await iniciarVarreduraCompleta(btn);
             }
         }, 40000);
 
-        // Início automático ao carregar a página
         if (!buscando) {
             await iniciarVarreduraCompleta(btn);
         }
 
     }, 2000);
 
-    // Função que fica de olho se você mudou de página ou aba
     function buscarCaixasNovasNaTela() {
         const hoje = new Date().toISOString().split('T')[0];
         let dataOntem = new Date();
@@ -100,21 +93,17 @@
         for (let celula of celulas) {
             const texto = celula.innerText.trim();
 
-            // Se for um Tote e ainda NÃO tiver a marcação "verificado" do nosso script
             if (texto.includes('MU-TT-') && celula.getAttribute('data-status-verificado') !== 'sim') {
                 const toteId = texto.split('\n')[0];
 
-                // Marca a célula para o radar rápido não pesquisar ela duas vezes seguidas
                 celula.setAttribute('data-status-verificado', 'sim');
                 celula.style.border = "2px solid orange";
 
-                // Dispara a verificação dessa caixa específica no fundo
                 verificarStatusTote(toteId, celula, ontem, hoje);
             }
         }
     }
 
-    // Função pesada que verifica tudo (acionada no clique ou a cada 40s)
     async function iniciarVarreduraCompleta(btn) {
         buscando = true;
         btn.innerText = "⏳ PESQUISANDO...";
@@ -132,7 +121,7 @@
 
             if (texto.includes('MU-TT-')) {
                 const toteId = texto.split('\n')[0];
-                celula.setAttribute('data-status-verificado', 'sim'); // Marca como verificado
+                celula.setAttribute('data-status-verificado', 'sim'); 
                 celula.style.border = "2px solid orange";
 
                 await verificarStatusTote(toteId, celula, ontem, hoje);
@@ -150,7 +139,6 @@
     }
 
     async function verificarStatusTote(toteId, elementoVisual, ontem, hoje) {
-        // PASSO 1: Verifica Endereço (Terminado ou Conta Quantidades)
         const urlEndereco = `https://wms.adminml.com/reports/address?address_from=${toteId}`;
         let qtdFaltante = 0;
         let achouQuantidade = false;
@@ -178,14 +166,12 @@
                 }
                 return;
             } else {
-                // Se não está vazia, vamos somar as quantidades que ainda estão na caixa
                 const tabelas = docEndereco.querySelectorAll('table');
                 if (tabelas.length > 0) {
                     const tabela = tabelas[0];
                     const headers = Array.from(tabela.querySelectorAll('th')).map(th => th.innerText.trim().toLowerCase());
                     
-                    // Procura qual coluna é a de quantidade
-                    let idxQtd = headers.findIndex(h => h.includes('quantidade') || h.includes('unidade') || h.includes('qty'));
+                    let idxQtd = headers.findIndex(h => h.includes('quantidade total'));
                     
                     if (idxQtd !== -1) {
                         const linhas = tabela.querySelectorAll('tbody tr');
@@ -203,7 +189,6 @@
                 }
             }
 
-            // PASSO 2: Verifica Movimentos (Packing, Nome e Hora)
             const urlMovimentos = `https://wms.adminml.com/reports/movements?limit=50&offset=0&sort=date_desc&date_from=${ontem}&date_to=${hoje}&storage_id=${toteId}`;
 
             const respostaMov = await fetch(urlMovimentos);
@@ -219,13 +204,24 @@
                     const colunas = primeiraLinha.querySelectorAll('td');
                     let responsavel = "Desconhecido";
                     let horario = "Sem hora";
+                    let isUnfit = false;
                     
-                    let corHorario = "#8e44ad"; // Roxo padrão
+                    let corHorario = "#8e44ad"; 
 
-                    if (colunas.length >= 2) {
+                    if (colunas.length >= 4) {
                         responsavel = colunas[colunas.length - 1].innerText.trim().split('\n')[0];
                         horario = colunas[colunas.length - 2].innerText.trim().split('\n')[0];
                         
+                        // --- NOVA LÓGICA: IDENTIFICAR UNFIT PRE PACKING ---
+                        let txtDestino = colunas[colunas.length - 3].innerText.trim();
+                        let txtOrigem = colunas[colunas.length - 4].innerText.trim();
+                        
+                        // Se Origem e Destino tiverem "MU-TT-", é uma troca de caixas
+                        if (txtOrigem.includes('MU-TT-') && txtDestino.includes('MU-TT-')) {
+                            isUnfit = true;
+                        }
+                        // ----------------------------------------------------
+
                         let partesHorario = horario.split(' ');
                         if (partesHorario.length === 2) {
                             let partesData = partesHorario[0].split('/');
@@ -237,28 +233,31 @@
                                 let diferencaMinutos = (tempoAtual - dataBip) / 1000 / 60;
                                 
                                 if (diferencaMinutos > 30) {
-                                    corHorario = "red"; // Mais de 30 min parado
+                                    corHorario = "red"; 
                                 } else if (diferencaMinutos > 15) {
-                                    corHorario = "#d35400"; // Laranja escuro (mais de 15 min)
+                                    corHorario = "#d35400"; 
                                 }
                             }
                         }
                     }
 
-                    elementoVisual.style.backgroundColor = "#c8e6c9";
-                    elementoVisual.style.border = "3px solid #2ecc71";
+                    // Define as cores com base no status (Unfit ou Packing normal)
+                    elementoVisual.style.backgroundColor = isUnfit ? "#ffcdd2" : "#c8e6c9";
+                    elementoVisual.style.border = isUnfit ? "3px solid #e53935" : "3px solid #2ecc71";
+                    
+                    let corTextoStatus = isUnfit ? "#c0392b" : "green";
+                    let textoPrincipal = isUnfit ? "🚨 UNFIT PRE PACKING" : "☑ EM PACKING";
+                    let textoStatusCompleto = textoPrincipal;
 
-                    // Prepara o texto do status incluindo a quantidade se foi encontrada
-                    let textoStatusPacking = `☑ EM PACKING`;
                     if (achouQuantidade && qtdFaltante > 0) {
                         let palavra = qtdFaltante === 1 ? 'produto' : 'produtos';
-                        textoStatusPacking = `☑ EM PACKING <span style="color: #555; font-size: 11px;">(faltam ${qtdFaltante} ${palavra})</span>`;
+                        textoStatusCompleto = `${textoPrincipal} <span style="color: #555; font-size: 11px;">(faltam ${qtdFaltante} ${palavra})</span>`;
                     }
 
-                    if (!elementoVisual.innerHTML.includes(textoStatusPacking)) {
+                    if (!elementoVisual.innerHTML.includes(textoStatusCompleto)) {
                         elementoVisual.innerHTML = `
                             <strong style="font-size: 14px;">${toteId}</strong><br>
-                            <span style="color: green; font-size: 13px; font-weight: bold;">${textoStatusPacking}</span><br>
+                            <span style="color: ${corTextoStatus}; font-size: 13px; font-weight: bold;">${textoStatusCompleto}</span><br>
                             <span style="color: #2980b9; font-size: 15px; font-weight: bold;">👤 ${responsavel}</span><br>
                             <span style="color: ${corHorario}; font-size: 14px; font-weight: bold;">🕒 ${horario}</span>
                         `;
